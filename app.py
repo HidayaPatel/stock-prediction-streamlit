@@ -21,12 +21,25 @@ st.set_page_config(
 # LOAD DATA AND MODELS
 # ============================================================================
 
+TRADE_COST = 0.001  # 0.1% each time the strategy enters or exits
+
 @st.cache_data
 def load_data():
     """Load preprocessed data and test results"""
     df = pd.read_csv('processed_data.csv')
     test_results = pd.read_csv('test_results.csv')
     test_results['Date'] = pd.to_datetime(test_results['Date'])
+
+    # Hold the stock the day after an 'up' prediction. The 0.1% cost is charged only
+    # when the position changes. (The saved Strategy_Return column charged it on
+    # every day the stock was held.)
+    position = test_results['Predictions'].shift(1).fillna(0)
+    cost = TRADE_COST * position.diff().abs().fillna(0)
+    returns = position * test_results['Daily_Return'] / 100 - cost
+    returns.iloc[0] = 0
+    test_results['Position'] = position
+    test_results['Strategy_Return'] = returns
+    test_results['Strategy_Cumulative'] = (1 + returns).cumprod()
     return df, test_results
 
 @st.cache_resource
@@ -78,7 +91,7 @@ if page == "Overview":
     with col2:
         st.metric("Total Samples", f"{len(df):,}")
     with col3:
-        st.metric("Features", "28", "Technical Indicators")
+        st.metric("Features", f"{len(feature_cols)}", "Technical Indicators")
     with col4:
         st.metric("Models Trained", "3", "LR, RF, XGBoost")
     
@@ -123,7 +136,7 @@ if page == "Overview":
         st.subheader("🎯 Project Objectives")
         st.markdown("""
         1. ✅ Build end-to-end ML pipeline
-        2. ✅ Engineer 28 technical indicators
+        2. ✅ Engineer 24 technical features
         3. ✅ Train and compare multiple models
         4. ✅ Evaluate with financial metrics
         5. ✅ Provide model interpretability
@@ -199,9 +212,9 @@ elif page == "Model Performance":
         - F1-Score: {model_results[best_model_name]['f1_score']:.4f}
         
         **Interpretation:**
-        - Model slightly better than random (50%)
+        - Always guessing "up" would score {test_results['Target'].mean():.1%}, so the model does not beat that baseline
         - Demonstrates inherent difficulty of stock prediction
-        - Technical indicators provide weak predictive signal
+        - Technical indicators alone gave no usable edge here
         """)
 
 # ============================================================================
@@ -213,7 +226,7 @@ elif page == "Backtesting Results":
     
     st.markdown("""
     Simulated trading strategy: **Buy when model predicts 'up', hold cash otherwise**  
-    Transaction cost: **0.1% per trade**
+    Transaction cost: **0.1% each time the strategy enters or exits** (65 times over the test period)
     """)
     
     # Financial metrics
@@ -268,11 +281,13 @@ elif page == "Backtesting Results":
     
     st.warning("""
     **Key Finding:** The ML strategy underperformed buy-and-hold.
+
+    An earlier version of this dashboard showed -14.3% because it charged the trading cost on all 365 days the stock was held.
     
     **Why this matters:**
     - Demonstrates honest scientific evaluation
     - Shows limitations of technical analysis for short-term prediction
-    - Transaction costs significantly impact active strategies
+    - Sitting in cash missed much of Apple's rise
     - Market efficiency makes consistent alpha generation difficult
     
     **Conclusion:** This project successfully demonstrates ML methodology while 
@@ -349,7 +364,7 @@ elif page == "About":
     - Features: OHLCV data
     
     **2. Feature Engineering**
-    - 28 technical indicators created
+    - 24 technical features used
     - Moving averages (SMA, EMA)
     - Momentum indicators (MACD, RSI, Stochastic)
     - Volatility measures (ATR, Bollinger Bands)
@@ -372,7 +387,7 @@ elif page == "About":
     ### Key Findings
     
     ✅ **Technical Success:** Complete ML pipeline successfully implemented  
-    ✅ **Model Performance:** 51% accuracy (marginally better than random)  
+    ✅ **Model Performance:** 50.5% accuracy, below the 54.3% from always guessing "up"  
     ✅ **Real-world Insight:** Demonstrates why short-term stock prediction is challenging  
     ✅ **Honest Evaluation:** Backtesting shows underperformance vs buy-and-hold  
     
